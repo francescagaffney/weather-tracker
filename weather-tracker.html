@@ -168,6 +168,10 @@
   .trip-w .big-icon { font-size: 2.2rem; }
   @media (max-width: 480px) { .trip-cols { grid-template-columns: 1fr; } }
 
+  .train-btn { display: block; width: 100%; text-align: left; margin-top: 8px; box-shadow: none; background: var(--bg2); }
+  .train-btn small { display: block; margin-top: 2px; }
+  .train-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
   footer { color: var(--muted); font-size: .85rem; text-align: center; margin-top: 24px; }
 </style>
 </head>
@@ -205,6 +209,14 @@
     </div>
     <div id="tripResult"></div>
     <p class="muted" style="margin:12px 0 0;font-size:.9rem">Train times aren't live here. Check the actual time on <a href="https://www.lner.co.uk/" target="_blank" rel="noopener">LNER's website</a> before you travel.</p>
+  </section>
+
+  <section class="card" id="live-trains">
+    <p class="eyebrow">Live departures</p>
+    <h2 style="margin:0 0 4px">Next LNER trains</h2>
+    <p class="muted" style="margin:0">Tap a train to load it into the planner above and see the weather at both ends.</p>
+    <div id="liveTrains" class="trip-cols" style="margin-top:12px"><p class="muted">Loading train times…</p></div>
+    <p class="muted" id="trainsUpdated" style="margin:10px 0 0;font-size:.85rem"></p>
   </section>
 
   <div id="app"></div>
@@ -747,6 +759,63 @@ function initTrip() {
   updateTrip();
 }
 
+// ---------- live trains (trains.json, refreshed by GitHub Actions) ----------
+const TRAINS_URL = 'trains.json';
+const TRAIN_ROUTES = { 'KGX-LDS': "London (King's Cross) → Leeds", 'LDS-KGX': "Leeds → London (King's Cross)" };
+let trainData = null;
+const minsOf = t => (t && /^\d{1,2}:\d{2}$/.test(t)) ? (+t.split(':')[0]) * 60 + (+t.split(':')[1]) : null;
+
+async function loadTrains() {
+  try {
+    const res = await fetch(`${TRAINS_URL}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    trainData = await res.json();
+  } catch (e) {
+    console.error(e);
+    trainData = { error: "Live train times aren't available right now. Use the planner above, or check LNER's website.", routes: {} };
+  }
+  renderTrains();
+}
+function trainStatus(t) {
+  if (t.cancelled) return 'Cancelled';
+  if (!t.etd || t.etd === 'On time') return 'On time';
+  if (t.etd === 'Delayed') return 'Delayed';
+  return `Expected ${t.etd}`;
+}
+function renderTrains() {
+  const box = $('liveTrains');
+  if (!trainData) return;
+  if (trainData.error) {
+    box.innerHTML = `<p class="muted">${trainData.error}</p>`;
+    $('trainsUpdated').textContent = '';
+    return;
+  }
+  box.innerHTML = Object.keys(TRAIN_ROUTES).map(route => {
+    const list = (trainData.routes || {})[route] || [];
+    const items = list.map(t => {
+      const arr = (t.arrivalEt && /^\d/.test(t.arrivalEt)) ? t.arrivalEt : t.arrivalSt;
+      const depM = minsOf(t.std), arrM = minsOf(arr);
+      const dur = (depM != null && arrM != null) ? (arrM - depM + 1440) % 1440 : '';
+      const plat = t.platform ? ` · Platform ${t.platform}` : '';
+      return `<button type="button" class="train-btn" data-route="${route}" data-std="${t.std || ''}" data-dur="${dur}" ${t.cancelled ? 'disabled' : ''}>
+        <b>${t.std || '--:--'}</b> → ${arr || '--:--'}
+        <small class="muted">${trainStatus(t)}${plat}</small></button>`;
+    }).join('');
+    return `<div class="trip-box"><small>${TRAIN_ROUTES[route]}</small>${items || '<p class="muted">No LNER trains listed right now.</p>'}</div>`;
+  }).join('');
+  $('trainsUpdated').textContent = `Last updated ${trainData.updated} (UK time). Refreshes about every 10 minutes.`;
+}
+$('liveTrains').addEventListener('click', e => {
+  const b = e.target.closest('.train-btn');
+  if (!b || b.disabled) return;
+  $('dir').value = b.dataset.route === 'LDS-KGX' ? 'leeds-ldn' : 'ldn-leeds';
+  if (trainData && trainData.updated) $('tdate').value = trainData.updated.slice(0, 10);
+  $('ttime').value = b.dataset.std;
+  if (b.dataset.dur) $('tdur').value = b.dataset.dur;
+  updateTrip();
+  $('trip').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
 // ---------- events ----------
 document.addEventListener('click', e => {
   const hour = e.target.closest('.hour');
@@ -767,7 +836,9 @@ $('refresh').addEventListener('click', load);
 updateUnitButtons();
 initTrip();
 load();
+loadTrains();
 setInterval(load, REFRESH_MS);
+setInterval(loadTrains, 5 * 60 * 1000);
 </script>
 </body>
 </html>
