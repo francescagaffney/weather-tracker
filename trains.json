@@ -1,5 +1,5 @@
 {
-  "updated": "",
+  "updated": "2026-11-19 14:48",
   "routes": {},
-  "error": "Train times aren't set up yet. The scheduled job will fill this in."
+  "error": "The train service returned an error (403). It will try again soon."
 }
