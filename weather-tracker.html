@@ -152,6 +152,22 @@
   .log li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
   .badge { font-weight: 700; font-size: .9rem; }
   .Right { color: var(--leave); } .Wrong { color: var(--take); } .Pending, .Fair { color: var(--muted); }
+  a { color: var(--accent); }
+
+  /* Train trip planner */
+  .trip-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 14px 0; }
+  .trip-form label { display: flex; flex-direction: column; gap: 6px; font-size: .85rem; color: var(--muted); }
+  .trip-form select, .trip-form input {
+    font: inherit; font-size: 1rem; padding: 10px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--bg2); color: var(--ink);
+  }
+  .trip-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .trip-box small { display: block; }
+  .trip-box b { font-size: 1.4rem; }
+  .trip-w { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .trip-w .big-icon { font-size: 2.2rem; }
+  @media (max-width: 480px) { .trip-cols { grid-template-columns: 1fr; } }
+
   footer { color: var(--muted); font-size: .85rem; text-align: center; margin-top: 24px; }
 </style>
 </head>
@@ -171,6 +187,25 @@
   <h1 id="place">Leeds <small>, UK</small></h1>
   <div class="date" id="date"></div>
   <div class="status" id="status" role="status" aria-live="polite">Loading the latest Leeds weather…</div>
+
+  <section class="card" id="trip">
+    <p class="eyebrow">Plan a train trip</p>
+    <h2 style="margin:0 0 4px">LNER: London and Leeds</h2>
+    <p class="muted" style="margin:0">Pick a train time to see the weather at both ends.</p>
+    <div class="trip-form">
+      <label>Direction
+        <select id="dir">
+          <option value="ldn-leeds">London (King's Cross) → Leeds</option>
+          <option value="leeds-ldn">Leeds → London (King's Cross)</option>
+        </select>
+      </label>
+      <label>Date<input type="date" id="tdate"></label>
+      <label>Departure time<input type="time" id="ttime"></label>
+      <label>Journey time (minutes, estimate)<input type="number" id="tdur" value="135" min="30" max="400" step="5"></label>
+    </div>
+    <div id="tripResult"></div>
+    <p class="muted" style="margin:12px 0 0;font-size:.9rem">Train times aren't live here. Check the actual time on <a href="https://www.lner.co.uk/" target="_blank" rel="noopener">LNER's website</a> before you travel.</p>
+  </section>
 
   <div id="app"></div>
 </div>
@@ -205,6 +240,7 @@ const $ = id => document.getElementById(id);
 const r = n => Math.round(n);
 const wx = code => WX[code] || ['Unknown', '🌡️'];
 let state = null;
+let london = null; // London forecast, used for the trip planner
 
 // ---------- units (saved in this browser) ----------
 function loadUnits() {
@@ -621,12 +657,14 @@ async function load() {
   let data = null, aq = null, error = null;
   try { data = await getJSON(FC_URL); } catch (e) { error = e; console.error(e); }
   try { aq = await getJSON(AQ_URL); } catch (e) { console.error(e); }
+  try { london = await getJSON(LDN_URL); } catch (e) { console.error(e); }
 
   try {
     if (data) {
       saveLast(data, aq);
       state = { data, aq, sel: state ? state.sel : null };
       render();
+      updateTrip();
       showUpdated('Updated ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
       $('status').textContent = aq ? '' : 'Air quality is unavailable right now. The weather is still up to date.';
       return;
@@ -648,6 +686,67 @@ async function load() {
   }
 }
 
+// ---------- train trip planner ----------
+const LDN_URL = `https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&timezone=${TZ}`
+  + `&wind_speed_unit=mph&temperature_unit=celsius&forecast_days=7`
+  + `&hourly=temperature_2m,precipitation_probability,weather_code`;
+
+// Key like "2026-11-19T12:00" in local time, to match the forecast's hourly times
+function keyFor(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:00`;
+}
+function stationAt(data, when) {
+  if (!data || !data.hourly) return null;
+  const idx = data.hourly.time.indexOf(keyFor(when));
+  if (idx < 0) return null;
+  return { t: data.hourly.temperature_2m[idx], p: data.hourly.precipitation_probability[idx], code: data.hourly.weather_code[idx] };
+}
+function stationBox(name, label, when, w) {
+  const timeStr = when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const body = w
+    ? `<span class="big-icon">${wx(w.code)[1]}</span>
+       <div><b>${r(T(w.t))}${TU()}</b><p class="muted" style="margin:0">${wx(w.code)[0]} · ${w.p == null ? '–' : w.p}% rain</p></div>`
+    : '<p class="muted" style="margin:0">Forecast not available for this time.</p>';
+  return `<div class="stat trip-box"><small>${label} · ${name}</small><b>${timeStr}</b><div class="trip-w">${body}</div></div>`;
+}
+function tripTip(arrW, depW) {
+  if (arrW && arrW.p >= 50) return 'Take an umbrella for the arrival. Rain is likely there.';
+  if (depW && depW.p >= 50) return 'Take an umbrella for departure. Rain is likely there at that time.';
+  if (!arrW && !depW) return '';
+  return 'Looks dry at both ends, as far as the forecast shows.';
+}
+function updateTrip() {
+  const out = $('tripResult');
+  const dateV = $('tdate').value, timeV = $('ttime').value;
+  const dur = +$('tdur').value || 135;
+  if (!dateV || !timeV) { out.innerHTML = ''; return; }
+  const dep = new Date(`${dateV}T${timeV}:00`);
+  const arr = new Date(dep.getTime() + dur * 60000);
+  const leedsToLondon = $('dir').value === 'leeds-ldn';
+  const depName = leedsToLondon ? 'Leeds' : "London (King's Cross)";
+  const arrName = leedsToLondon ? "London (King's Cross)" : 'Leeds';
+  const leedsData = state ? state.data : null;
+  const depData = leedsToLondon ? leedsData : london;
+  const arrData = leedsToLondon ? london : leedsData;
+  if (!depData && !arrData) { out.innerHTML = '<p class="muted">Weather is loading…</p>'; return; }
+  const depW = stationAt(depData, dep), arrW = stationAt(arrData, arr);
+  out.innerHTML = `
+    <div class="trip-cols">
+      ${stationBox(depName, 'Leave', dep, depW)}
+      ${stationBox(arrName, 'Arrive', arr, arrW)}
+    </div>
+    <p class="quip">${tripTip(arrW, depW)}</p>`;
+}
+function initTrip() {
+  const p = n => String(n).padStart(2, '0');
+  const soon = new Date(Date.now() + 3600000);
+  $('tdate').value = soon.toLocaleDateString('en-CA');
+  $('ttime').value = `${p(soon.getHours())}:00`;
+  ['dir', 'tdate', 'ttime', 'tdur'].forEach(id => $(id).addEventListener('input', updateTrip));
+  updateTrip();
+}
+
 // ---------- events ----------
 document.addEventListener('click', e => {
   const hour = e.target.closest('.hour');
@@ -666,6 +765,7 @@ $('windUnit').addEventListener('click', () => {
 $('refresh').addEventListener('click', load);
 
 updateUnitButtons();
+initTrip();
 load();
 setInterval(load, REFRESH_MS);
 </script>
