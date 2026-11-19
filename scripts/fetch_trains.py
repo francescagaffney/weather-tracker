@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 # Departure Board 1.1 specification page on the Rail Data Marketplace.
 BASE_URL = os.environ.get(
     "RDM_BASE_URL",
-    "https://api1.raildata.org.uk/1010-live-departure-board-dep/LDBWS/api/20220120",
+    "https://api1.raildata.org.uk/1010-live-departure-board-dep1_2/LDBWS/api/20220120",
 )
 KEY = os.environ.get("RDM_CONSUMER_KEY", "").strip()
 
