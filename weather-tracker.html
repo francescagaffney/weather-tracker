@@ -208,7 +208,7 @@
       <label>Journey time (minutes, estimate)<input type="number" id="tdur" value="135" min="30" max="400" step="5"></label>
     </div>
     <div id="tripResult"></div>
-    <p class="muted" style="margin:12px 0 0;font-size:.9rem">Train times aren't live here. Check the actual time on <a href="https://www.lner.co.uk/" target="_blank" rel="noopener">LNER's website</a> before you travel.</p>
+    <p class="muted" style="margin:12px 0 0;font-size:.9rem">Weather forecasts go up to 14 days ahead, but anything beyond about a week is less reliable. Train times aren't live here. Check the actual time on <a href="https://www.lner.co.uk/" target="_blank" rel="noopener">LNER's website</a> before you travel.</p>
   </section>
 
   <section class="card" id="live-trains">
@@ -227,7 +227,7 @@ const LAT = 53.8008, LON = -1.5491, TZ = 'Europe%2FLondon';
 const REFRESH_MS = 10 * 60 * 1000;
 const CALLS_KEY = 'wt-umbrella-calls', LAST_KEY = 'wt-last-forecast', UNITS_KEY = 'wt-units';
 const FC_URL = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&timezone=${TZ}`
-  + `&wind_speed_unit=mph&temperature_unit=celsius&past_days=8&forecast_days=16`
+  + `&wind_speed_unit=mph&temperature_unit=celsius&past_days=8&forecast_days=14`
   + `&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,is_day`
   + `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,weather_code`
   + `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max`;
@@ -700,7 +700,7 @@ async function load() {
 
 // ---------- train trip planner ----------
 const LDN_URL = `https://api.open-meteo.com/v1/forecast?latitude=51.5074&longitude=-0.1278&timezone=${TZ}`
-  + `&wind_speed_unit=mph&temperature_unit=celsius&forecast_days=16`
+  + `&wind_speed_unit=mph&temperature_unit=celsius&forecast_days=14`
   + `&hourly=temperature_2m,precipitation_probability,weather_code`;
 
 // Key like "2026-11-19T12:00" in local time, to match the forecast's hourly times
